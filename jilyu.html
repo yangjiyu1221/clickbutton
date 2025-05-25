@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>클릭 카운터 랭킹 (시간 제한)</title>
+  <style>
+    body {
+      font-family: Ownglyph_PDH-Rg;
+      text-align: center;
+      padding-top: 100px;
+      background-color: #fff4db;
+      color: #625028;
+    }
+    #counter {
+      font-size: 48px;
+      margin-bottom: 20px;
+      transition: transform 0.1s ease;
+      font-family: Ownglyph_PDH-Rg;
+    }
+    #timer {
+      font-size: 24px;
+      margin-bottom: 20px;
+      color: #333;
+      font-family: Ownglyph_PDH-Rg;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 18px;
+      border: none;
+      border-radius: 5px;
+      background-color: #ad8e47;
+      color: white;
+      cursor: pointer;
+      font-family: Ownglyph_PDH-Rg;
+    }
+    button:disabled {
+      background-color: #999;
+      cursor: not-allowed;
+    }
+    button:hover:enabled {
+      background-color: #62512a;
+    }
+    #rankingList {
+     list-style: none;
+      padding-left: 0;
+    }
+  </style>
+</head>
+<body>
+  <audio id="clickSound" src="https://www.myinstants.com/media/sounds/button_click.mp3"></audio>
+  <h style="margin-bottom: 6px;">지유양의 클릭게임기...<br> 이름을 입력하고 제한시간 내에 최대한 많이 눌러 일등을 쟁취하세요~</h>
+  <h1 style="color:#43371c; margin-top: 6px;">이름을 입력하고 시작하세요</h1>
+  <input type="text" id="nameInput" placeholder="이름 입력" style="width: 100px;
+  height: 12px;
+  font-family: Ownglyph_PDH-Rg;
+  font-size: 17px;
+  padding:  10px;
+  margin-bottom: 10px;"/>
+  <button onclick="startGame()">시작</button>
+
+  <div id="gameArea" style="display:none; margin-top:20px;">
+    <div id="timer">남은 시간: 30초</div>
+    <div id="counter">0</div>
+    <button id="clickBtn" onclick="increaseCount()">클릭!</button>
+  </div>
+
+  <h2 style="color:#43371c">🏆 랭킹</h2>
+  <ul id="rankingList"></ul>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+  <script>
+    // Firebase 설정
+    const firebaseConfig = {
+      apiKey: "AIzaSyBaTz_2LwbtPhkgdTzZkj2xA15or_vgszo",
+      authDomain: "click-button-1221.firebaseapp.com",
+      projectId: "click-button-1221",
+      storageBucket: "click-button-1221.firebasestorage.app",
+      messagingSenderId: "108368565134",
+      appId: "1:108368565134:web:68acae6141a82c6ab60adf",
+      measurementId: "G-WD1XCYYKFC"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    let count = 0;
+    let currentName = "";
+    let saveTimer = null;
+    let countdownTimer = null;
+    let timeLeft = 30; // 제한 시간 (초)
+
+    function startGame() {
+      const nameInput = document.getElementById("nameInput").value.trim();
+      if (!nameInput) {
+        alert("이름을 입력해주세요!");
+        return;
+      }
+      currentName = nameInput;
+      count = 0;
+      timeLeft = 30;
+      document.getElementById("counter").textContent = count;
+      document.getElementById("timer").textContent = `남은 시간: ${timeLeft}초`;
+      document.getElementById("gameArea").style.display = "block";
+      document.getElementById("clickBtn").disabled = false;
+
+      // 저장 타이머 초기화
+      if (saveTimer) clearInterval(saveTimer);
+      saveTimer = setInterval(saveScoreToFirestore, 3000);
+
+      // 카운트다운 시작
+      if (countdownTimer) clearInterval(countdownTimer);
+      countdownTimer = setInterval(() => {
+        timeLeft--;
+        document.getElementById("timer").textContent = `남은 시간: ${timeLeft}초`;
+        if (timeLeft <= 0) {
+          clearInterval(countdownTimer);
+          endGame();
+        }
+      }, 1000);
+
+      // 실시간 랭킹 갱신
+      db.collection("scores").orderBy("score", "desc")
+        .onSnapshot(loadRanking);
+    }
+
+    function increaseCount() {
+      count++;
+      const counterEl = document.getElementById("counter");
+      counterEl.textContent = count;
+      document.getElementById("clickSound").play();
+      counterEl.style.transform = "scale(1.2)";
+      setTimeout(() => counterEl.style.transform = "scale(1)", 100);
+    }
+
+    function saveScoreToFirestore() {
+      if (!currentName) return;
+      const userRef = db.collection("scores").doc(currentName);
+      userRef.set({
+        name: currentName,
+        score: count,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true })
+      .catch(err => console.error("점수 저장 실패:", err));
+    }
+
+    function endGame() {
+      // 클릭 금지
+      document.getElementById("clickBtn").disabled = true;
+      // 최종 점수 저장
+      saveScoreToFirestore();
+      alert(`시간 종료! 점수: ${count}점`);
+      clearInterval(saveTimer);
+    }
+
+    function loadRanking(snapshot) {
+      const list = document.getElementById("rankingList");
+      list.innerHTML = "";
+      let rank = 1;
+      let myItem = null;
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        const li = document.createElement("li");
+        li.textContent = `${rank}. ${data.name} : ${data.score} 점`;
+        if (data.name === currentName) {
+          li.style.fontWeight = "bold";
+          li.style.color = "red";
+          myItem = li;
+        } else {
+          list.appendChild(li);
+        }
+        rank++;
+      });
+      if (myItem) {
+        const divider = document.createElement("li");
+        divider.textContent = "👤 내 순위 👤";
+        divider.style.marginTop = "20px";
+        divider.style.fontWeight = "bold";
+        divider.style.color = "green";
+        list.insertBefore(divider, list.firstChild);
+        list.insertBefore(myItem, divider.nextSibling);
+      }
+    }
+  </script>
+</body>
+</html>
